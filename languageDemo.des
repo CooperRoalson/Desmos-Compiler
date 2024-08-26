@@ -1,0 +1,65 @@
+num a = 4;
+point b = (5,2);
+const bool c = true;
+color d = rgb(100,150,200);
+
+point[] pts = [b,(1,3),(2,2)]; // Eventually add higher-dimension lists
+
+// num n = $solve(5 = n^2 + 2n - 3); // Does a regression
+
+num e = 2*a; // Defines e with respect to a
+num f = a > 0 ? a + 1 : |a|;
+num g = a > 0 ? a : undefined;
+num h = a > 0 ? a;
+
+num triple(num x) = 3*x; // A function of x
+num triple(num x, num y) = (x + y) * 3; // overloading
+
+action tripleA = a := triple(a);
+
+action setAToQuadruple(num x) = {
+	a := x;
+	tripleA;
+	a += x;
+}
+
+ticker tripleA <period=a>;
+
+plot b <color=d>;
+
+struct circle(point ctr, num rad) <plotargs> {
+	plot ((x - ctr.x)^2 + (y - ctr.y)^2 <= rad^2) <plotargs>;
+}
+
+struct TriWithCircle(point p1, point p2, point p3) {
+	polygon p = {p1,p2,p3} <color = d>;
+	point center = (p1 + p2 + p3)/3;
+	circle C = {center, |p1-center|} <color=d>;
+}
+
+TriWithCircle t = {pts[0],pts[1],pts[2]};
+hidden circle C0 = {(0,0), 1}; // not drawn
+hidden circle C1 = circle((0,0), 1);
+hidden auto C2 = circle((0,0), 1);
+// hidden circle C3((0,0), 1);
+
+struct Ball(point center, num radius) {
+	circle C(center,radius);
+	num diameter = radius*2;
+
+	action move(point displacement) = {center += displacement};
+}
+
+Ball b1 = {(4,5),a}
+num d1 = b1.diameter
+
+
+struct Vec3D(num x, num y, num z) {
+	num[] coords = [x,y,z];
+
+	Vec3D $init(num[] c) = {c[0],c[1],c[2]};
+	Vec3D $op+(Vec3D other) = {coords + other.coords};
+	num $op||() = $sqrt(x^2+y^2+z^2);
+}
+
+Vec3D $op-(Vec3D a, Vec3D b) = {a.coords - b.coords};
