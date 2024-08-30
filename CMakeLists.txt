@@ -11,7 +11,9 @@ add_executable(Desmos_Compiler main.cpp
         lexer.cpp
         parser.cpp
         compiler.h
+        compiler.cpp
         backend.cpp
         semantic_analyzer.cpp
         ast.h
+        ast.cpp
 )

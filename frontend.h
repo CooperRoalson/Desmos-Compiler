@@ -52,14 +52,14 @@ namespace frontend {
                 "'+'", "'-'", "'*'", "'/'", "'%'", "'^'", "'|'", "'!'", "'&&'", "'||'",
                 "'<'", "'>'", "'<='", "'>='", "'=='", "'!='"
         };
-        const char* name() const {return NAMES[type];}
+        std::string name() const {return NAMES[type];}
     };
-
-    std::ostream& operator<<(std::ostream& out, const Token::Type& tokenType);
 
     struct Error {
         SrcPos pos;
         std::string message;
+
+        Error(SrcPos pos, std::string message) : pos(pos), message(std::move(message)) {}
     };
 
     void lex(std::string& source, std::vector<Token>& tokens, std::vector<Error>& errors);

@@ -2,7 +2,7 @@
 // Created by Cooper Roalson on 7/27/24.
 //
 
-#include <sstream>
+#include <iostream>
 
 #include "compiler.h"
 #include "ast.h"
@@ -13,9 +13,8 @@ void Compiler::compile_backend(std::ostream& out) {
     ast->compile(out);
 }
 
-static void compile_identifier(std::ostream& out, std::string_view identifier) {
-    // TODO: make this handle constants and functions and stuff (and maybe types)
-    out << "V_{" << identifier << "}";
+static void compile_identifier(std::ostream& out, std::string_view identifier, bool isConst, bool isFunction) {
+    out << (isFunction ? "F" : isConst ? "C" : "V") << "_{" << identifier << "}";
 }
 
 static void compile_simple_binop(std::ostream& out, const BinaryOperatorNode* node, const char* op, bool commutative = true) {
@@ -42,15 +41,15 @@ void LiteralNode::compile(std::ostream& out) const {
 }
 
 void IdentifierNode::compile(std::ostream& out) const {
-    compile_identifier(out, identifier);
+    compile_identifier(out, identifier, type.isConst, false);
 }
 
 void DeclarationNode::compile(std::ostream& out) const {
-    compile_identifier(out, identifier);
+    compile_identifier(out, identifier, type.isConst, false);
 }
 
 void FunctionDeclarationNode::compile(std::ostream& out) const {
-    throw std::runtime_error("FunctionDeclarationNode backend not implemented");
+    compile_identifier(out, identifier, false, true);
 }
 
 int BinaryOperatorNode::precedence() const {
@@ -69,9 +68,7 @@ int BinaryOperatorNode::precedence() const {
         case Operator::OR:
             return 9;
         default:
-            std::stringstream ss;
-            ss << "Invalid binary operator: " << op;
-            throw std::runtime_error(ss.str());
+            throw std::runtime_error("Invalid binary operator: " + std::to_string(op));
     }
 }
 
@@ -119,9 +116,7 @@ void BinaryOperatorNode::compile(std::ostream& out) const {
             out << "\\right)";
             break;
         default:
-            std::stringstream ss;
-            ss << "Invalid binary operator: " << op;
-            throw std::runtime_error(ss.str());
+            throw std::runtime_error("Invalid binary operator: " + std::to_string(op));
     }
 }
 
@@ -152,9 +147,7 @@ void UnaryOperatorNode::compile(std::ostream& out) const {
             }
             break;
         default:
-            std::stringstream ss;
-            ss << "Invalid unary operator: " << op;
-            throw std::runtime_error(ss.str());
+            throw std::runtime_error("Invalid unary operator: " + std::to_string(op));
     }
 }
 

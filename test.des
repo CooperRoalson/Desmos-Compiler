@@ -1,1 +1,3 @@
-num myVar = 5 * 2 - !(2 * 3);
+mytype w = 0;
+const num myVar = w * 2 - !(2 * 3);
+color test(num a, bool y) = a + y;

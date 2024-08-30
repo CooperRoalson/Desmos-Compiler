@@ -2,9 +2,6 @@
 // Created by Cooper Roalson on 7/12/24.
 //
 
-#include <memory>
-#include <sstream>
-
 #include "compiler.h"
 #include "frontend.h"
 #include "ast.h"
@@ -17,6 +14,7 @@ namespace frontend {
 
     class Parser {
         Compiler* compiler;
+        SymbolScope* currentScope;
         const std::vector<Token>& tokens;
         std::vector<Error>& errors;
         long i;
@@ -45,7 +43,7 @@ namespace frontend {
         unq_ptr<MainBlockNode> parse_main_block();
 
     public:
-        Parser(Compiler* compiler, const std::vector<Token>& tokens, std::vector<Error>& errors) : compiler(compiler), tokens(tokens), errors(errors), i(0) {}
+        Parser(Compiler* compiler, const std::vector<Token>& tokens, std::vector<Error>& errors) : compiler(compiler), currentScope(&compiler->symbolTable), tokens(tokens), errors(errors), i(0) {}
         void parse();
     };
 
@@ -64,16 +62,14 @@ namespace frontend {
             return true;
         }
         if (required) {
-            std::stringstream message;
             if (i + 1 < tokens.size() && tokens[i + 1].type == token) {
-                message << "Unexpected token: " << tokens[i].name();
-                errors.push_back({tokens[i].pos, message.str()});
+                errors.emplace_back(tokens[i].pos, std::string("Unexpected token: ") + tokens[i].name());
                 i += 2;
                 return true;
             }
-            message << "Expected token: " << token;
-            if (i < tokens.size()) {message << ", got: " << tokens[i].name();}
-            errors.push_back({tokens[i].pos, message.str()});
+            std::string message = "Expected token: " + std::to_string(token);
+            if (i < tokens.size()) {message = message + ", got: " + tokens[i].name();}
+            errors.emplace_back(tokens[i].pos, message);
         }
         return false;
     }
@@ -89,7 +85,7 @@ namespace frontend {
         }
 
         if (required) {
-            errors.push_back({tokens[start].pos, "Expected type"});
+            errors.emplace_back(tokens[start].pos, "Expected type");
         } else {
             i = start;
         }
@@ -99,20 +95,37 @@ namespace frontend {
     unq_ptr<DeclarationNode> Parser::parse_declaration(bool required) {
         long start = i;
         Type type = parse_type();
-        if (type.isUndefined) {
-            if (required) {errors.push_back({tokens[start].pos, "Expected declaration"});}
+        if (type.isUnknown) {
+            if (required) {errors.emplace_back(tokens[start].pos, "Expected declaration");}
             return nullptr;
         }
 
         if (!accept_token(Token::IDENTIFIER)) {
-            if (required) {errors.push_back({tokens[start].pos, "Expected declaration"});}
+            if (required) {errors.emplace_back(tokens[start].pos, "Expected declaration");}
             i = start;
             return nullptr;
         }
+        std::string_view identifier = tokens[i - 1].value.string;
 
-        // TODO: check for parameters
+        // Check if it's a function
+        if (accept_token(Token::LEFT_PAREN)) {
+            auto func = std::make_unique<FunctionDeclarationNode>(tokens[start].pos, type, identifier, currentScope);
 
-        return std::make_unique<DeclarationNode>(tokens[start].pos, type, tokens[i - 1].value.string);
+            // Parse parameters
+            while (!accept_token(Token::RIGHT_PAREN)) {
+                if (!func->parameters.empty()) {
+                    if (!accept_token(Token::COMMA, true)) { break; }
+                }
+
+                unq_ptr<DeclarationNode> param = parse_declaration(true);
+                if (!param) break;
+                func->parameters.push_back(std::move(param));
+            }
+
+            return func;
+        }
+
+        return std::make_unique<DeclarationNode>(tokens[start].pos, type, identifier, currentScope);
     }
 
     static Operator get_operator(Token::Type type) {
@@ -141,9 +154,7 @@ namespace frontend {
             case Token::EQUAL_EQUAL: return Operator::EQUAL_EQUAL;
             case Token::NOT_EQUAL: return Operator::NOT_EQUAL;
             default:
-                std::stringstream ss;
-                ss << "Token is not an operator: " << Token::NAMES[type];
-                throw std::runtime_error(ss.str());
+                throw std::runtime_error(std::string("Token is not an operator: ") + Token::NAMES[type]);
         }
     }
 
@@ -157,7 +168,7 @@ namespace frontend {
             Token op = tokens[i - 1];
             unq_ptr<ExpressionNode> right = (this->*parse_next)();
             if (!right) {
-                errors.push_back({tokens[i].pos, "Expected expression"});
+                errors.emplace_back(tokens[i].pos, "Expected expression");
                 break;
             }
 
@@ -181,7 +192,7 @@ namespace frontend {
             accept_token(Token::RIGHT_PAREN, true);
             return node;
         } else if (accept_token(Token::IDENTIFIER)) {
-            return std::make_unique<IdentifierNode>(tokens[i - 1].pos, tokens[i - 1].value.string);
+            return std::make_unique<IdentifierNode>(tokens[i - 1].pos, tokens[i - 1].value.string, currentScope);
         } else if (accept_token(Token::NUM_LITERAL)) {
             return std::make_unique<LiteralNode>(tokens[i - 1].pos, Type(Type::NUM, true), tokens[i - 1].value.num);
         } else if (accept_token(Token::BOOL_LITERAL)) {
@@ -272,7 +283,7 @@ namespace frontend {
     unq_ptr<ExpressionNode> Parser::parse_expression(bool required) {
         unq_ptr<ExpressionNode> node = parse_e10();
         if (!node && required) {
-            errors.push_back({tokens[i].pos, "Expected expression"});
+            errors.emplace_back(tokens[i].pos, "Expected expression");
         }
         return node;
     }
@@ -281,18 +292,27 @@ namespace frontend {
         long start = i;
         unq_ptr<DeclarationNode> declaration = parse_declaration();
         if (!declaration) {
-            if (required) {errors.push_back({tokens[start].pos, "Expected equals statement"});}
+            if (required) {errors.emplace_back(tokens[start].pos, "Expected equals statement");}
             return nullptr;
         }
 
         accept_token(Token::EQUALS, true);
-//        if (!accept_token(Token::EQUALS)) {
-//            if (required) {errors.push_back({tokens[start].pos, "Expected equals statement"});}
-//            i = start;
-//            return nullptr;
-//        }
+
+        currentScope->add_symbol(declaration.get());
+
+        if (declaration->isFunction()) {
+            std::string name {declaration->identifier};
+            currentScope = currentScope->create_child_scope(name);
+            for (auto& param : ((FunctionDeclarationNode*) declaration.get())->parameters) {
+                currentScope->add_symbol(param.get());
+            }
+        }
 
         unq_ptr<ExpressionNode> value = parse_expression(true);
+
+        if (declaration->isFunction()) {
+            currentScope = currentScope->get_parent_scope();
+        }
 
         accept_token(Token::SEMICOLON, true);
         return std::make_unique<InitializationStatementNode>(std::move(declaration), std::move(value));
@@ -308,7 +328,7 @@ namespace frontend {
         }
 
         if (required) {
-            errors.push_back({tokens[i].pos, "Expected statement"});
+            errors.emplace_back(tokens[i].pos, "Expected statement");
         }
         return nullptr;
     }
@@ -319,6 +339,7 @@ namespace frontend {
         }
 
         unq_ptr<StatementBlockNode> node = std::make_unique<StatementBlockNode>(tokens[i - 1].pos);
+        currentScope = currentScope->create_child_scope();
 
         bool flag = true;
         while (tokens[i].type != Token::RIGHT_BRACE && tokens[i].type != Token::FILE_END) {

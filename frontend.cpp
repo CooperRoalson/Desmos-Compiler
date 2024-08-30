@@ -27,10 +27,6 @@ namespace frontend {
         exit(1);
     }
 
-    std::ostream& operator<<(std::ostream& out, const Token::Type& tokenType) {
-        return out << Token::NAMES[tokenType];
-    }
-
 }
 
 using namespace frontend;

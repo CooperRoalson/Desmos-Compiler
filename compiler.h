@@ -17,7 +17,7 @@ struct Type {
         POLYGON
     };
 
-    bool isUndefined;
+    bool isUnknown;
     bool isPrimitive;
     bool isConst;
     union {
@@ -25,30 +25,46 @@ struct Type {
         std::string_view identifier;
     } value;
 
-    Type() : isUndefined(true), value{} {}
-    Type(Primitive primitive, bool isConst) : isUndefined(false), isPrimitive(true), isConst(isConst), value{primitive} {}
-    Type(std::string_view identifier, bool isConst) : isUndefined(false), isPrimitive(false), isConst(isConst), value{.identifier = identifier} {}
+    Type() : isUnknown(true), value{} {}
+    Type(Primitive primitive, bool isConst = false) : isUnknown(false), isPrimitive(true), isConst(isConst), value{primitive} {}
+    Type(std::string_view identifier, bool isConst = false) : isUnknown(false), isPrimitive(false), isConst(isConst), value{.identifier = identifier} {}
 
-};
+    bool matches(const Type& other) const {
+        if (isUnknown) {return true;}
+        if (isPrimitive) {return other.isPrimitive && value.primitive == other.value.primitive;}
+        return !other.isPrimitive && value.identifier == other.value.identifier;
+    }
 
-class SymbolTable {
-    struct SymbolTableNode {
-        Type type;
-    };
+    bool matches_primitive(Primitive primitive) const {
+        return isUnknown || (isPrimitive && value.primitive == primitive);
+    }
 
-    std::unordered_map<std::string, SymbolTableNode> symbols;
-    std::vector<SymbolTable> childScopes;
-
-public:
-    SymbolTable() : symbols(), childScopes() {}
-
+    std::string name() const {
+        if (isUnknown) {return "unknown";}
+        if (isPrimitive) {return PRIMITIVE_STRS[value.primitive];}
+        return std::string(value.identifier);
+    }
 };
 
 // Forward declarations
-namespace AST {class MainBlockNode;}
+namespace AST {struct MainBlockNode; struct DeclarationNode;}
 namespace frontend {class Parser;}
 
-static bool compile_program(std::string& source, std::ostream& out);
+class SymbolScope {
+
+    std::unordered_map<std::string_view, AST::DeclarationNode*> symbols;
+    std::vector<SymbolScope> childScopes;
+    SymbolScope* parentScope;
+    std::string name;
+
+public:
+    SymbolScope() : symbols(), childScopes(), parentScope(nullptr), name() {}
+
+    bool add_symbol(AST::DeclarationNode* declaration);
+    SymbolScope* create_child_scope(std::string childName = "");
+    SymbolScope* get_parent_scope() {return parentScope;}
+    AST::DeclarationNode* find_symbol(std::string_view identifier);
+};
 
 class Compiler {
     friend bool compile_program(std::string&, std::ostream&);
@@ -58,9 +74,11 @@ class Compiler {
 
 public:
     std::unique_ptr<AST::MainBlockNode> ast;
-    SymbolTable symbolTable;
+    SymbolScope symbolTable;
 
     Compiler();
+
+    static bool compile_program(std::string& source, std::ostream& out);
 };
 
 // Order of operations:
